@@ -1,493 +1,1196 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>地層3Dソリッドモデラー 〚0126〛</title>
+    <title>地層3Dソリッドモデラー (色解析版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Markdown Parser for AI response -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        body { background: radial-gradient(circle at center, #2e1065, #0f172a); min-height: 100vh; color: white; font-family: 'sans-serif'; }
-        .glass-panel { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 1rem; }
-        canvas { border-radius: 0.5rem; }
-        .drop-zone { border: 2px dashed rgba(255, 255, 255, 0.3); transition: all 0.3s; cursor: pointer; }
-        .drop-zone:hover { border-color: #a78bfa; background: rgba(167, 139, 250, 0.1); }
-        .hidden-input { display: none; }
-        #ai-overlay { display: none; background: rgba(0,0,0,0.85); }
-        .prose { color: #e2e8f0; max-width: none; }
-        .prose h1, .prose h2, .prose h3 { color: #a78bfa; margin-top: 1rem; margin-bottom: 0.5rem; border-bottom: 1px solid #4c1d95; }
-        .prose p { margin-bottom: 1rem; line-height: 1.6; }
+        body { margin: 0; overflow: hidden; background-color: #f3f4f6; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        #canvas-container { width: 100%; height: 60vh; position: relative; cursor: grab; }
+        #canvas-container:active { cursor: grabbing; }
+        .ui-panel { height: 40vh; overflow-y: auto; }
+        .drop-zone { border: 2px dashed #cbd5e1; transition: all 0.3s; position: relative; overflow: hidden; background-size: cover; background-position: center; }
+        .drop-zone:hover { border-color: #6366f1; background-color: #eef2ff; }
+        .drop-zone.has-image { border-style: solid; border-color: #4f46e5; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .loader {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 3px solid #ffffff;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Modal Styles */
+        .modal { transition: opacity 0.3s ease-in-out; }
+        .modal-content { max-height: 80vh; overflow-y: auto; }
     </style>
 </head>
-<body class="p-4 md:p-8">
+<body class="flex flex-col h-screen">
 
-    <header class="max-w-6xl mx-auto mb-8 text-center">
-        <h1 class="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-indigo-300">
-            地層3Dソリッドモデラー <span class="text-sm font-normal text-purple-200">授業用ver.1 〚0126〛</span>
-        </h1>
-        <p class="text-gray-400 mt-2">ようかんモデルの写真を4枚読み込み、地層を3Dで復元します。</p>
-    </header>
+    <!-- 3D Visualization Area -->
+    <div id="canvas-container" class="bg-slate-900 shadow-2xl relative">
+        <!-- Overlay UI (Header Bar) -->
+        <div class="absolute top-0 left-0 w-full z-10 bg-gradient-to-r from-purple-900 to-indigo-900 text-white p-4 shadow-lg pointer-events-none select-none border-b border-purple-700/50 backdrop-blur-sm">
+            <h1 class="text-xl font-bold tracking-tight text-white">地層3Dソリッドモデラー</h1>
+            <p class="text-xs text-purple-200 mt-0.5">ようかんモデル解析版: 緑(砂岩)・茶(泥岩)の割合抽出</p>
+        </div>
 
-    <main class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        <!-- UI Side -->
-        <div class="lg:col-span-4 space-y-6">
-            <div class="glass-panel p-6">
-                <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <span class="w-2 h-6 bg-purple-500 rounded-full"></span> 写真読み込み
-                </h2>
-                
-                <div class="grid grid-cols-2 gap-4">
-                    <!-- North -->
-                    <div class="space-y-2">
-                        <label class="text-xs text-gray-400">1. 北 (North)</label>
-                        <div id="drop-n" class="drop-zone aspect-video flex items-center justify-center relative overflow-hidden rounded-md" onclick="document.getElementById('file-n').click()">
-                            <span class="text-xs text-gray-500">＋</span>
-                            <img id="prev-n" class="absolute inset-0 w-full h-full object-cover hidden">
-                        </div>
-                        <input type="file" id="file-n" class="hidden-input" accept="image/*" onchange="handleImage(this, 'n')">
-                    </div>
-                    <!-- West -->
-                    <div class="space-y-2">
-                        <label class="text-xs text-gray-400">2. 西 (West)</label>
-                        <div id="drop-w" class="drop-zone aspect-video flex items-center justify-center relative overflow-hidden rounded-md" onclick="document.getElementById('file-w').click()">
-                            <span class="text-xs text-gray-500">＋</span>
-                            <img id="prev-w" class="absolute inset-0 w-full h-full object-cover hidden">
-                        </div>
-                        <input type="file" id="file-w" class="hidden-input" accept="image/*" onchange="handleImage(this, 'w')">
-                    </div>
-                    <!-- South -->
-                    <div class="space-y-2">
-                        <label class="text-xs text-gray-400">3. 南 (South)</label>
-                        <div id="drop-s" class="drop-zone aspect-video flex items-center justify-center relative overflow-hidden rounded-md" onclick="document.getElementById('file-s').click()">
-                            <span class="text-xs text-gray-500">＋</span>
-                            <img id="prev-s" class="absolute inset-0 w-full h-full object-cover hidden">
-                        </div>
-                        <input type="file" id="file-s" class="hidden-input" accept="image/*" onchange="handleImage(this, 's')">
-                    </div>
-                    <!-- East -->
-                    <div class="space-y-2">
-                        <label class="text-xs text-gray-400">4. 東 (East)</label>
-                        <div id="drop-e" class="drop-zone aspect-video flex items-center justify-center relative overflow-hidden rounded-md" onclick="document.getElementById('file-e').click()">
-                            <span class="text-xs text-gray-500">＋</span>
-                            <img id="prev-e" class="absolute inset-0 w-full h-full object-cover hidden">
-                        </div>
-                        <input type="file" id="file-e" class="hidden-input" accept="image/*" onchange="handleImage(this, 'e')">
-                    </div>
-                </div>
+        <div class="absolute bottom-4 right-4 z-10 flex gap-2">
+            <div class="bg-slate-800/80 backdrop-blur text-white px-3 py-1 rounded text-xs border border-slate-700">
+                左ドラッグ: 回転 | 右ドラッグ: 移動 | ホイール: ズーム
+            </div>
+        </div>
 
-                <div class="mt-6 flex flex-col gap-2">
-                    <button onclick="generateModel()" class="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded-lg font-bold transition-all shadow-lg shadow-indigo-900/20">
-                        3Dモデルを構築
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="hidden absolute inset-0 bg-slate-900/80 z-50 flex flex-col items-center justify-center backdrop-blur-sm transition-opacity duration-300">
+            <div class="loader mb-4 w-12 h-12 border-4"></div>
+            <p id="loading-text" class="text-white font-bold text-lg tracking-wide">解析中...</p>
+            <p class="text-white/60 text-xs mt-2">画像内のストロー位置を特定して地層を抽出しています</p>
+        </div>
+
+        <!-- AI Explanation Modal -->
+        <div id="ai-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                <div class="bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex justify-between items-center text-white">
+                    <h3 class="font-bold flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        AI地質解説 (Gemini)
+                    </h3>
+                    <button onclick="closeModal('ai-modal')" class="hover:bg-white/20 rounded p-1 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
-                    <div class="flex gap-2">
-                        <button onclick="showAIAnalysis()" class="flex-1 bg-purple-700 hover:bg-purple-600 py-2 rounded-lg text-sm transition-all flex items-center justify-center gap-1">
-                            ✨ AI解説
-                        </button>
-                        <button onclick="showCenterChart()" class="flex-1 bg-slate-700 hover:bg-slate-600 py-2 rounded-lg text-sm transition-all flex items-center justify-center gap-1">
-                            📊 中央柱状図
-                        </button>
-                    </div>
                 </div>
-            </div>
-
-            <div class="glass-panel p-6">
-                <h2 class="text-sm font-semibold mb-3 text-gray-300">凡例・設定</h2>
-                <div class="space-y-3">
-                    <div class="flex items-center gap-3 text-xs">
-                        <span class="w-4 h-4 bg-[#22c55e] rounded border border-white/20"></span> 砂岩（緑）
-                        <span class="w-4 h-4 bg-[#92400e] rounded border border-white/20 ml-2"></span> 泥岩（茶）
-                    </div>
-                    <div class="flex items-center gap-3 text-xs opacity-40">
-                        <span class="w-4 h-4 bg-[#facc15] rounded"></span> 礫岩
-                        <span class="w-4 h-4 bg-[#6b7280] rounded"></span> その他
-                    </div>
-                    <hr class="border-white/10">
-                    <div class="space-y-1">
-                        <label class="text-[10px] text-gray-400">垂直倍率 (V-Scale)</label>
-                        <input type="range" id="v-scale" min="1" max="15" step="0.5" value="7.5" class="w-full accent-purple-500" oninput="updateVScale()">
-                    </div>
+                <div id="ai-content" class="p-6 overflow-y-auto text-slate-700 text-sm leading-relaxed space-y-4">
+                    <!-- AI Content Here -->
+                </div>
+                <div class="p-4 bg-slate-50 border-t border-slate-100 text-right">
+                    <button onclick="closeModal('ai-modal')" class="px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-600 text-sm hover:bg-slate-50 transition-colors">閉じる</button>
                 </div>
             </div>
         </div>
 
-        <!-- Canvas Side -->
-        <div class="lg:col-span-8 space-y-4">
-            <div id="canvas-container" class="glass-panel w-full aspect-square md:aspect-video relative overflow-hidden bg-black/20">
-                <div id="loading-spinner" class="absolute inset-0 flex items-center justify-center hidden bg-black/40 z-10">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+        <!-- Center Column Modal -->
+        <div id="col-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[85vh]">
+                <div class="bg-gradient-to-r from-orange-500 to-amber-500 p-4 flex justify-between items-center text-white">
+                    <h3 class="font-bold flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        中央地点 柱状図
+                    </h3>
+                    <button onclick="closeModal('col-modal')" class="hover:bg-white/20 rounded p-1 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
                 </div>
-                <!-- Three.js will inject here -->
-            </div>
-            <div class="flex justify-between items-center text-[10px] text-gray-500">
-                <p>マウス：回転　ホイール：拡大縮小　右ドラッグ：移動</p>
-                <p>※写真は地層の縞模様が見えるように撮影してください</p>
+                <div id="col-content" class="p-6 overflow-y-auto text-slate-700 flex flex-col items-center">
+                    <!-- Column Content Here -->
+                </div>
+                <div class="p-4 bg-slate-50 border-t border-slate-100 text-center text-xs text-slate-500">
+                    <p>4方位のデータから計算された中央部の推定地層です</p>
+                    <button onclick="closeModal('col-modal')" class="mt-3 px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-600 text-sm hover:bg-slate-50 transition-colors">閉じる</button>
+                </div>
             </div>
         </div>
-    </main>
+    </div>
 
-    <!-- AI Overlay -->
-    <div id="ai-overlay" class="fixed inset-0 z-50 p-4 md:p-10 flex items-center justify-center overflow-auto">
-        <div class="bg-slate-900 w-full max-w-4xl min-h-[70vh] rounded-2xl border border-purple-500/30 flex flex-col relative">
-            <div class="p-6 border-b border-white/10 flex justify-between items-center">
-                <h2 id="ai-title" class="text-xl font-bold text-purple-300 flex items-center gap-2">✨ 地層のAI解析結果</h2>
-                <button onclick="closeOverlay()" class="text-gray-400 hover:text-white p-2">✕</button>
+    <!-- Controls & Inputs Panel -->
+    <div class="ui-panel bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <div class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- Left: Inputs (8 cols) -->
+            <div class="lg:col-span-8 flex flex-col gap-4">
+                <div class="flex justify-between items-end mb-2">
+                    <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                        <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        ボーリング画像入力（４方位）
+                    </h2>
+                    <span class="text-[10px] text-slate-400">緑・茶色以外の部分（透明・シール等）は自動的に無視されます</span>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <!-- North (Index 0) -->
+                    <div class="flex flex-col gap-2 group">
+                        <label class="text-xs font-bold text-slate-500 text-center group-hover:text-indigo-600 transition-colors">北 (North)</label>
+                        <div id="drop-0" class="drop-zone h-32 rounded-xl flex items-center justify-center cursor-pointer bg-slate-50" onclick="triggerInput(0)">
+                            <div class="text-center pointer-events-none p-2">
+                                <svg class="w-6 h-6 mx-auto text-slate-300 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                <span class="text-[10px] text-slate-400 font-medium">画像を選択</span>
+                            </div>
+                        </div>
+                        <div id="status-0" class="mt-2 min-h-[40px]"></div>
+                    </div>
+                    
+                    <!-- West (Index 3) -->
+                    <div class="flex flex-col gap-2 group">
+                        <label class="text-xs font-bold text-slate-500 text-center group-hover:text-indigo-600 transition-colors">西 (West)</label>
+                        <div id="drop-3" class="drop-zone h-32 rounded-xl flex items-center justify-center cursor-pointer bg-slate-50" onclick="triggerInput(3)">
+                            <div class="text-center pointer-events-none p-2">
+                                <svg class="w-6 h-6 mx-auto text-slate-300 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                <span class="text-[10px] text-slate-400 font-medium">画像を選択</span>
+                            </div>
+                        </div>
+                        <div id="status-3" class="mt-2 min-h-[40px]"></div>
+                    </div>
+
+                    <!-- South (Index 2) -->
+                    <div class="flex flex-col gap-2 group">
+                        <label class="text-xs font-bold text-slate-500 text-center group-hover:text-indigo-600 transition-colors">南 (South)</label>
+                        <div id="drop-2" class="drop-zone h-32 rounded-xl flex items-center justify-center cursor-pointer bg-slate-50" onclick="triggerInput(2)">
+                            <div class="text-center pointer-events-none p-2">
+                                <svg class="w-6 h-6 mx-auto text-slate-300 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                <span class="text-[10px] text-slate-400 font-medium">画像を選択</span>
+                            </div>
+                        </div>
+                        <div id="status-2" class="mt-2 min-h-[40px]"></div>
+                    </div>
+
+                    <!-- East (Index 1) -->
+                    <div class="flex flex-col gap-2 group">
+                        <label class="text-xs font-bold text-slate-500 text-center group-hover:text-indigo-600 transition-colors">東 (East)</label>
+                        <div id="drop-1" class="drop-zone h-32 rounded-xl flex items-center justify-center cursor-pointer bg-slate-50" onclick="triggerInput(1)">
+                            <div class="text-center pointer-events-none p-2">
+                                <svg class="w-6 h-6 mx-auto text-slate-300 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                <span class="text-[10px] text-slate-400 font-medium">画像を選択</span>
+                            </div>
+                        </div>
+                        <div id="status-1" class="mt-2 min-h-[40px]"></div>
+                    </div>
+                </div>
+
+                <input type="file" id="file-input" class="hidden" accept="image/*" onchange="handleFile(event)">
+                
+                <div class="flex gap-2 mt-4 flex-wrap">
+                    <button onclick="processAllImages()" id="process-btn" class="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3 transform active:scale-[0.99] min-w-[200px]">
+                        <svg class="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                        解析を実行してソリッド生成
+                    </button>
+                    <!-- AI解説ボタン -->
+                    <button onclick="generateGeologicalExplanation()" id="ai-explain-btn" class="hidden w-auto bg-white border-2 border-indigo-100 text-indigo-600 font-bold py-3 px-4 rounded-xl hover:bg-indigo-50 transition-all flex items-center justify-center gap-2">
+                        <span>✨</span> AI解説
+                    </button>
+                    <!-- 中央柱状図ボタン -->
+                    <button onclick="showCenterColumn()" id="center-col-btn" class="hidden w-auto bg-white border-2 border-orange-200 text-orange-600 font-bold py-3 px-4 rounded-xl hover:bg-orange-50 transition-all flex items-center justify-center gap-2">
+                        <span>📊</span> 中央柱状図
+                    </button>
+                </div>
             </div>
-            <div id="ai-content" class="p-8 prose overflow-auto flex-1">
-                解析中... APIキーが設定されていない場合は解説が表示されません。
-            </div>
-            <div class="p-4 border-t border-white/10 flex gap-4 bg-slate-950/50 rounded-b-2xl">
-                <input type="password" id="api-key" placeholder="Gemini API Keyを入力してください" class="flex-1 bg-black/40 border border-white/20 rounded px-4 py-2 text-sm">
+
+            <!-- Right: Settings (4 cols) -->
+            <div class="lg:col-span-4 bg-slate-50 rounded-2xl p-5 border border-slate-200 flex flex-col gap-5">
+                <div>
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 border-b border-slate-200 pb-2">3D表示設定</h3>
+                    
+                    <div class="space-y-5">
+                        <!-- V-Scale -->
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="text-xs font-medium text-slate-600">モデル垂直方向表示サイズ</label>
+                                <span id="v-scale-val" class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">7.5x</span>
+                            </div>
+                            <input type="range" id="v-scale" min="1" max="15" step="0.5" value="7.5" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                        </div>
+
+                        <!-- Opacity -->
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="text-xs font-medium text-slate-600">不透明度</label>
+                                <span id="opacity-val" class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">0.9</span>
+                            </div>
+                            <input type="range" id="opacity" min="0.1" max="1" step="0.05" value="0.9" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                        </div>
+
+                        <!-- API Key Input (Restored for AI Explanation) -->
+                        <div class="pt-2 border-t border-slate-200">
+                            <label class="text-xs font-bold text-slate-500 flex justify-between items-center mb-1">
+                                <span>Gemini API Key</span>
+                                <span class="text-[9px] text-slate-400 font-normal">※解説機能に必要</span>
+                            </label>
+                            <input type="password" id="api-key-input" placeholder="AI解説を使う場合は入力" 
+                                   class="w-full bg-white border border-slate-300 text-slate-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2">
+                        </div>
+
+                        <!-- Toggles -->
+                        <div class="grid grid-cols-2 gap-3 pt-2">
+                            <label class="flex items-center gap-2 p-2 bg-white rounded border border-slate-200 cursor-pointer hover:border-indigo-300 transition-colors">
+                                <input type="checkbox" id="show-volume" checked class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300">
+                                <span class="text-xs text-slate-600 font-medium">ソリッド表示</span>
+                            </label>
+                            <label class="flex items-center gap-2 p-2 bg-white rounded border border-slate-200 cursor-pointer hover:border-indigo-300 transition-colors">
+                                <input type="checkbox" id="show-wireframe" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300">
+                                <span class="text-xs text-slate-600 font-medium">ワイヤー表示</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Legend -->
+                <div class="mt-auto">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">凡例（地層の羊羹モデル）</h3>
+                    <div class="grid grid-cols-1 gap-2 text-[11px]">
+                        <div class="flex items-center gap-2 p-1.5 bg-white rounded border border-slate-100">
+                            <div class="w-4 h-4 rounded bg-[#4caf50] shadow-sm"></div>
+                            <span class="font-bold text-slate-700">砂岩 (緑色)</span>
+                        </div>
+                        <div class="flex items-center gap-2 p-1.5 bg-white rounded border border-slate-100">
+                            <div class="w-4 h-4 rounded bg-[#8b4513] shadow-sm"></div>
+                            <span class="font-bold text-slate-700">泥岩 (茶色)</span>
+                        </div>
+                        <!-- 黄色は除外されるが、凡例としては一応残しておく -->
+                        <div class="flex items-center gap-2 p-1.5 bg-white rounded border border-slate-100 opacity-40">
+                            <div class="w-4 h-4 rounded bg-[#ffeb3b] shadow-sm border border-slate-200"></div>
+                            <span class="font-bold text-slate-500">礫岩 (黄色)</span>
+                        </div>
+                        <div class="flex items-center gap-2 p-1.5 bg-white rounded border border-slate-100 opacity-40">
+                            <div class="w-4 h-4 rounded bg-[#9ca3af]"></div>
+                            <span class="text-slate-500">その他 (透明・シール等)</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        /**
-         * GLOBAL STATE & CONSTANTS
-         */
-        const IMAGES = { n: null, w: null, s: null, e: null };
-        const ANALYZED_DATA = {}; // Points for 3D construction
-        let renderer, scene, camera, controls, meshGroup;
-        let vScale = 7.5;
-        const apiKeyInput = document.getElementById('api-key');
+        // --- 設定 ---
+        // 環境変数からのキーがあれば使用、なければUI入力を使用
+        const envApiKey = ""; 
+        
+        // --- データ構造 ---
+        let currentDropIdx = 0;
+        let images = [null, null, null, null]; // N, E, S, W base64 strings
+        let imageElements = [null, null, null, null]; // HTMLImageElements for pixel access
+        
+        // 解析結果格納用
+        let rawAnalysisResults = [null, null, null, null]; 
 
-        /**
-         * IMAGE PROCESSING
-         */
-        function handleImage(input, direction) {
-            if (input.files && input.files[0]) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        IMAGES[direction] = img;
-                        const prev = document.getElementById('prev-' + direction);
-                        prev.src = e.target.result;
-                        prev.classList.remove('hidden');
-                        document.getElementById('drop-' + direction).querySelector('span').classList.add('hidden');
-                    };
-                    img.src = e.target.result;
-                };
-                reader.readAsDataURL(input.files[0]);
+        // 描画用データ
+        let renderPoints = [];
+        let centerPointData = [];
+
+        // 地質カラーパレット
+        const layerColors = {
+            "砂岩": 0x6B8E23, "緑": 0x6B8E23, "緑色": 0x6B8E23, "Green": 0x6B8E23, "抹茶": 0x6B8E23,
+            "泥岩": 0x5C4033, "茶": 0x5C4033, "茶色": 0x5C4033, "Brown": 0x5C4033, "小豆": 0x5C4033,
+            "礫岩": 0xffeb3b, "黄": 0xffeb3b, "黄色": 0xffeb3b, "Yellow": 0xffeb3b, "栗": 0xffeb3b, "白": 0xffeb3b
+        };
+
+        function getLayerColor(typeStr) {
+            for (const [key, color] of Object.entries(layerColors)) {
+                if (typeStr.includes(key)) return color;
             }
+            let hash = 0;
+            for (let i = 0; i < typeStr.length; i++) hash = typeStr.charCodeAt(i) + ((hash << 5) - hash);
+            const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+            return parseInt("00000".substring(0, 6 - c.length) + c, 16);
         }
 
-        function analyzeOneImage(img) {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            canvas.width = 100;
-            canvas.height = 200; // Resolution for analysis
-            ctx.drawImage(img, 0, 0, 100, 200);
+        // --- Three.js 変数 ---
+        let scene, camera, renderer, modelGroup, controls;
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let mouseButton = -1;
 
-            const getPointData = (x) => {
-                const imageData = ctx.getImageData(x, 0, 1, 200).data;
-                const layers = [];
-                let currentType = null;
-                let currentHeight = 0;
-
-                for (let y = 0; y < 200; y++) {
-                    const r = imageData[y * 4];
-                    const g = imageData[y * 4 + 1];
-                    const b = imageData[y * 4 + 2];
-                    
-                    // HSV conversion
-                    const max = Math.max(r, g, b) / 255;
-                    const min = Math.min(r, g, b) / 255;
-                    const v = max;
-                    const s = max === 0 ? 0 : (max - min) / max;
-                    let h = 0;
-                    if (max !== min) {
-                        if (max === r / 255) h = (g - b) / (max - min) / 255;
-                        if (max === g / 255) h = 2 + (b - r) / (max - min) / 255;
-                        if (max === b / 255) h = 4 + (r - g) / (max - min) / 255;
-                        h *= 60; if (h < 0) h += 360;
-                    }
-
-                    // Validity Filter
-                    if (v > 0.85 && s < 0.25) continue; // Reflection/Label
-                    if (v < 0.08) continue; // Shadow
-                    if (s < 0.05) continue; // Transparent
-
-                    // Hybrid Logic: Green (Sandstone) vs Brown (Mudstone)
-                    let type = 'brown'; // Default Mudstone
-                    if ((h >= 25 && h <= 190) || (g > r * 0.8)) {
-                        type = 'green';
-                    }
-
-                    if (type !== currentType) {
-                        if (currentType !== null) layers.push({ type: currentType, h: currentHeight });
-                        currentType = type;
-                        currentHeight = 0;
-                    }
-                    currentHeight++;
-                }
-                if (currentType) layers.push({ type: currentType, h: currentHeight });
-
-                // Normalize to total 10.0
-                const total = layers.reduce((acc, l) => acc + l.h, 0);
-                return layers.map(l => ({ type: l.type, h: (l.h / total) * 10 }));
-            };
-
-            // Analyze Left(25%) and Right(75%) as corner sources
-            return {
-                left: getPointData(25),
-                right: getPointData(75)
-            };
-        }
-
-        /**
-         * 3D CONSTRUCTION
-         */
-        function initThreeJS() {
+        // --- 初期化 ---
+        function initThree() {
             const container = document.getElementById('canvas-container');
+            
             scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+
             camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
-            camera.position.set(15, 10, 15);
-            camera.lookAt(0, 0, 0);
+            camera.position.set(100, 90, 100);
+            camera.lookAt(0, -30, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(container.clientWidth, container.clientHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             container.appendChild(renderer.domElement);
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
             scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-            directionalLight.position.set(10, 20, 10);
-            scene.add(directionalLight);
 
-            meshGroup = new THREE.Group();
-            scene.add(meshGroup);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            dirLight.position.set(50, 100, 50);
+            scene.add(dirLight);
+            
+            const backLight = new THREE.DirectionalLight(0xaaccee, 0.3);
+            backLight.position.set(-50, 20, -50);
+            scene.add(backLight);
 
-            // Simple Orbit Controls mock
-            let isDragging = false;
-            let previousMousePosition = { x: 0, y: 0 };
-            container.addEventListener('mousedown', () => isDragging = true);
-            window.addEventListener('mouseup', () => isDragging = false);
-            window.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
-                const deltaMove = { x: e.offsetX - previousMousePosition.x, y: e.offsetY - previousMousePosition.y };
-                meshGroup.rotation.y += deltaMove.x * 0.01;
-                meshGroup.rotation.x += deltaMove.y * 0.01;
-                previousMousePosition = { x: e.offsetX, y: e.offsetY };
-            });
+            const gridHelper = new THREE.GridHelper(200, 20, 0x334155, 0x1e293b);
+            scene.add(gridHelper);
 
-            function animate() {
-                requestAnimationFrame(animate);
-                renderer.render(scene, camera);
-            }
+            modelGroup = new THREE.Group();
+            scene.add(modelGroup);
+
+            window.addEventListener('resize', onWindowResize);
+            container.addEventListener('mousedown', onMouseDown);
+            container.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+            container.addEventListener('contextmenu', e => e.preventDefault());
+            container.addEventListener('wheel', onWheel);
+
             animate();
+            
+            // 環境キーがあれば入力欄にセット（表示はマスク）
+            if (envApiKey && envApiKey.length > 5) {
+                document.getElementById('api-key-input').value = envApiKey;
+            }
         }
 
-        function generateModel() {
-            if (!IMAGES.n || !IMAGES.w || !IMAGES.s || !IMAGES.e) {
-                alert("4方位すべての写真を読み込んでください。");
-                return;
-            }
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
 
-            meshGroup.clear();
-            const res = {
-                n: analyzeOneImage(IMAGES.n),
-                w: analyzeOneImage(IMAGES.w),
-                s: analyzeOneImage(IMAGES.s),
-                e: analyzeOneImage(IMAGES.e)
+        function onMouseDown(e) {
+            isDragging = true;
+            mouseButton = e.button;
+            previousMousePosition = { x: e.offsetX, y: e.offsetY };
+        }
+
+        function onMouseMove(e) {
+            if (!isDragging) return;
+            const delta = {
+                x: e.offsetX - previousMousePosition.x,
+                y: e.offsetY - previousMousePosition.y
             };
 
-            // Corner Integration (Spec 4)
-            // Points (Local Coords): NW, NE, SW, SE
-            const NW = mergeColumns(res.n.left, res.w.right);
-            const NE = mergeColumns(res.n.right, res.e.left);
-            const SW = mergeColumns(res.s.right, res.w.left);
-            const SE = mergeColumns(res.s.left, res.e.right);
+            if (mouseButton === 0) { // Rotate
+                const rotSpeed = 0.005;
+                const x = camera.position.x;
+                const z = camera.position.z;
+                const angle = -delta.x * rotSpeed;
+                camera.position.x = x * Math.cos(angle) - z * Math.sin(angle);
+                camera.position.z = x * Math.sin(angle) + z * Math.cos(angle);
+                camera.position.y += delta.y * 0.5;
+            } else if (mouseButton === 2) { // Pan
+                const panSpeed = 0.2;
+                camera.position.x -= delta.x * panSpeed * 0.5;
+                camera.position.y += delta.y * panSpeed; 
+            }
+            camera.lookAt(0, -30, 0);
+            previousMousePosition = { x: e.offsetX, y: e.offsetY };
+        }
 
-            // Center Linear Interpolation (Spec 4)
-            const N_Mid = interpolate(NW, NE);
-            const W_Mid = interpolate(NW, SW);
-            const S_Mid = interpolate(SW, SE);
-            const E_Mid = interpolate(NE, SE);
-            const Center = interpolate(N_Mid, S_Mid);
+        function onMouseUp() {
+            isDragging = false;
+            mouseButton = -1;
+        }
 
-            const grid = [
-                [NW, N_Mid, NE],
-                [W_Mid, Center, E_Mid],
-                [SW, S_Mid, SE]
-            ];
+        function onWheel(e) {
+            e.preventDefault();
+            const zoomSpeed = 0.1;
+            const vec = new THREE.Vector3();
+            camera.getWorldDirection(vec);
+            camera.position.addScaledVector(vec, -e.deltaY * zoomSpeed);
+        }
 
-            // Build Layered Geometry
-            const colors = { green: 0x22c55e, brown: 0x92400e };
-            let currentBase = Array(9).fill(0); // Tracking Y-base for each point
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
 
-            // Assume layers are somewhat continuous for visualization
-            // In a simplified 0126 model, we take the average layer structure
-            const maxLayerCount = 20; 
-            for (let l = 0; l < maxLayerCount; l++) {
-                const layerGeom = new THREE.BufferGeometry();
-                const vertices = [];
-                const indices = [];
-                let layerColor = null;
+        // --- データの統合と構築 (Core Logic) ---
+        function buildModelData() {
+            if (!rawAnalysisResults.some(r => r !== null)) return;
 
-                // For each cell in 3x3 grid
-                for (let r = 0; r < 3; r++) {
-                    for (let c = 0; c < 3; c++) {
-                        const pt = grid[r][c][l];
-                        if (!pt) continue;
-                        layerColor = colors[pt.type];
-                        
-                        const x = (c - 1) * 5;
-                        const z = (r - 1) * 5;
-                        const yBottom = currentBase[r * 3 + c] * vScale;
-                        const yTop = (currentBase[r * 3 + c] + pt.h) * vScale;
-                        
-                        // Vertical column vertices
-                        vertices.push(x, -yBottom, z); // bottom
-                        vertices.push(x, -yTop, z);    // top
-                        currentBase[r * 3 + c] += pt.h;
+            const S = 40; 
+            
+            // 8地点定義
+            const N_Res = rawAnalysisResults[0] || {left:[], center:[], right:[]}; // 北画像
+            const E_Res = rawAnalysisResults[1] || {left:[], center:[], right:[]}; // 東画像
+            const S_Res = rawAnalysisResults[2] || {left:[], center:[], right:[]}; // 南画像
+            const W_Res = rawAnalysisResults[3] || {left:[], center:[], right:[]}; // 西画像
+
+            const mergeLayers = (layersA, layersB) => {
+                const count = Math.max(layersA.length, layersB.length);
+                const merged = [];
+                for(let i=0; i<count; i++) {
+                    const lA = layersA[i];
+                    const lB = layersB[i];
+                    if (lA && lB) {
+                        merged.push({ type: lA.type, thick: (lA.thick + lB.thick) / 2 });
+                    } else if (lA) {
+                        merged.push({ type: lA.type, thick: lA.thick });
+                    } else if (lB) {
+                        merged.push({ type: lB.type, thick: lB.thick });
                     }
                 }
+                return merged;
+            };
 
-                if (vertices.length === 0) break;
+            // コーナーデータの生成
+            const NE_Layers = mergeLayers(N_Res.left, E_Res.right);
+            const NW_Layers = mergeLayers(N_Res.right, W_Res.left);
+            const SE_Layers = mergeLayers(E_Res.left, S_Res.right);
+            const SW_Layers = mergeLayers(S_Res.left, W_Res.right);
 
-                // Construct triangles for a solid block (Simplified mesh)
-                // This builds a grid-based surface. For a "Solid", we render planes.
-                const mat = new THREE.MeshPhongMaterial({ color: layerColor, side: THREE.DoubleSide });
-                const mesh = new THREE.Mesh(createGridMesh(vertices), mat);
-                meshGroup.add(mesh);
-            }
+            // CenterデータをCornerデータから計算する関数
+            const calculateCenterLayers = (prevLayers, nextLayers) => {
+                 const newLayers = [];
+                 const count = Math.max(prevLayers.length, nextLayers.length);
+                 
+                 for(let i=0; i<count; i++) {
+                     const lP = prevLayers[i];
+                     const lN = nextLayers[i];
+                     
+                     let newThick = 0;
+                     let newType = "不明";
+
+                     if (lP && lN) {
+                         newThick = (lP.thick + lN.thick) / 2;
+                         newType = lP.type; // タイプは左側優先
+                     } else if (lP) {
+                         newThick = lP.thick; 
+                         newType = lP.type;
+                     } else if (lN) {
+                         newThick = lN.thick;
+                         newType = lN.type;
+                     }
+                     
+                     if(newThick > 0) {
+                         newLayers.push({ type: newType, thick: newThick });
+                     }
+                 }
+                 return newLayers;
+            };
+
+            // 各面の中央(Center)のデータを計算
+            const N_Center_Calc = calculateCenterLayers(NW_Layers, NE_Layers);
+            const E_Center_Calc = calculateCenterLayers(NE_Layers, SE_Layers);
+            const S_Center_Calc = calculateCenterLayers(SE_Layers, SW_Layers);
+            const W_Center_Calc = calculateCenterLayers(SW_Layers, NW_Layers);
+
+
+            // RenderPoints の配置 (Centerは計算値を使用)
+            renderPoints = [
+                { name: "NW", x: -S, z: -S, layers: NW_Layers },      // 0: 北西
+                { name: "N",  x: 0,  z: -S, layers: N_Center_Calc },  // 1: 北中央 (計算値)
+                { name: "NE", x: S,  z: -S, layers: NE_Layers },      // 2: 北東
+                { name: "E",  x: S,  z: 0,  layers: E_Center_Calc },  // 3: 東中央 (計算値)
+                { name: "SE", x: S,  z: S,  layers: SE_Layers },      // 4: 南東
+                { name: "S",  x: 0,  z: S,  layers: S_Center_Calc },  // 5: 南中央 (計算値)
+                { name: "SW", x: -S, z: S,  layers: SW_Layers },      // 6: 南西
+                { name: "W",  x: -S, z: 0,  layers: W_Center_Calc }   // 7: 西中央 (計算値)
+            ];
+
+            // --- 深度の正規化 (Normalization) Logic ---
+            const TARGET_TOTAL_DEPTH = 10.0;
             
-            // Re-center mesh group
-            meshGroup.position.y = (10 * vScale) / 2;
-        }
+            const normalizeLayers = (layers) => {
+                if (!layers || layers.length === 0) {
+                    layers.length = 0;
+                    layers.push({ type: "その他", thick: TARGET_TOTAL_DEPTH });
+                    return;
+                }
+                
+                let currentTotal = layers.reduce((sum, l) => sum + l.thick, 0);
+                
+                if (currentTotal <= 0.001) {
+                    layers.forEach(l => l.thick = TARGET_TOTAL_DEPTH / layers.length);
+                    currentTotal = TARGET_TOTAL_DEPTH;
+                }
+                
+                const scale = TARGET_TOTAL_DEPTH / currentTotal;
+                layers.forEach(l => l.thick *= scale);
+            };
 
-        function createGridMesh(verts) {
-            // Simplified: creates a 2-layered plane mesh for the current stratum slice
-            const geo = new THREE.BufferGeometry();
-            const f32 = new Float32Array(verts);
-            geo.setAttribute('position', new THREE.BufferAttribute(f32, 3));
-            
-            const indices = [];
-            // Top surface (idx 1, 3, 5, 7, 9, 11, 13, 15, 17)
-            const top = [1, 3, 5, 7, 9, 11, 13, 15, 17];
-            indices.push(1, 3, 7, 7, 3, 9, 3, 5, 9, 9, 5, 11); // r0-r1
-            indices.push(7, 9, 13, 13, 9, 15, 9, 11, 15, 15, 11, 17); // r1-r2
-            
-            // Side walls could be added here for a "Solid" look
-            // For brevity and stability, we prioritize the layered plan look
-            geo.setIndex(indices);
-            geo.computeVertexNormals();
-            return geo;
-        }
+            // 各地点を正規化
+            renderPoints.forEach(point => normalizeLayers(point.layers));
 
-        function mergeColumns(a, b) {
-            // Average the layer heights of two sources for the same corner
-            const result = [];
-            const len = Math.max(a.length, b.length);
-            for (let i = 0; i < len; i++) {
-                const la = a[i] || { type: 'brown', h: 0 };
-                const lb = b[i] || { type: 'brown', h: 0 };
-                result.push({
-                    type: la.h > lb.h ? la.type : lb.type, // Majority type
-                    h: (la.h + lb.h) / 2
+            // --- 中心点 (Volume Center) の生成 ---
+            let maxL = 0;
+            renderPoints.forEach(p => maxL = Math.max(maxL, p.layers.length));
+            
+            centerPointData = [];
+            for(let i=0; i<maxL; i++) {
+                let sumThick = 0;
+                let count = 0;
+                let types = {};
+                renderPoints.forEach(p => {
+                    if(p.layers[i]) {
+                        sumThick += p.layers[i].thick;
+                        count++;
+                        types[p.layers[i].type] = (types[p.layers[i].type] || 0) + 1;
+                    }
                 });
+                let bestType = "不明";
+                let maxTypeCount = -1;
+                for(let t in types) {
+                    if(types[t] > maxTypeCount) { maxTypeCount = types[t]; bestType = t; }
+                }
+                if(count > 0) {
+                    centerPointData.push({ type: bestType, thick: sumThick / count });
+                }
             }
-            return result;
-        }
-
-        function interpolate(a, b) {
-            return mergeColumns(a, b); // Linear interpolation is equivalent to merge in this logic
-        }
-
-        function updateVScale() {
-            vScale = parseFloat(document.getElementById('v-scale').value);
-            generateModel();
-        }
-
-        /**
-         * AI & TOOLS
-         */
-        async function showAIAnalysis() {
-            const overlay = document.getElementById('ai-overlay');
-            const content = document.getElementById('ai-content');
-            overlay.style.display = 'flex';
             
-            const apiKey = apiKeyInput.value.trim();
-            if (!apiKey) {
-                content.innerHTML = "<p class='text-red-400'>Gemini APIキーを入力してください。写真はブラウザ内で解析されていますが、考察文の作成にはAPIが必要です。</p>";
+            // 中心点の正規化
+            normalizeLayers(centerPointData);
+        }
+
+        // --- 3D Model Rendering ---
+        function update3DModel() {
+            while(modelGroup.children.length > 0) { 
+                const obj = modelGroup.children[0];
+                if(obj.geometry) obj.geometry.dispose();
+                if(obj.material) obj.material.dispose();
+                modelGroup.remove(obj); 
+            }
+
+            buildModelData();
+
+            const vScale = parseFloat(document.getElementById('v-scale').value);
+            const opacity = parseFloat(document.getElementById('opacity').value);
+            const showVolume = document.getElementById('show-volume').checked;
+            const showWireframe = document.getElementById('show-wireframe').checked;
+
+            document.getElementById('v-scale-val').textContent = vScale.toFixed(1) + 'x';
+            document.getElementById('opacity-val').textContent = opacity.toFixed(2);
+
+            if (renderPoints.length === 0) return;
+
+            const directions = [
+                { text: "北 (N)", x: 0, z: -48 },
+                { text: "東 (E)", x: 48, z: 0 },
+                { text: "南 (S)", x: 0, z: 48 },
+                { text: "西 (W)", x: -48, z: 0 }
+            ];
+
+            directions.forEach(dir => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 256; canvas.height = 128;
+                ctx.font = 'bold 64px "Helvetica Neue", Arial, sans-serif';
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = "rgba(0,0,0,0.8)";
+                ctx.shadowBlur = 8;
+                ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 2;
+                ctx.fillText(dir.text, 128, 64);
+                const texture = new THREE.CanvasTexture(canvas);
+                const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.9 });
+                const sprite = new THREE.Sprite(spriteMat);
+                sprite.position.set(dir.x, 15, dir.z);
+                sprite.scale.set(20, 10, 1);
+                modelGroup.add(sprite);
+            });
+
+            renderPoints.forEach(point => {
+                if (point.layers.length === 0) return;
+                const geoM = new THREE.SphereGeometry(1, 8, 8);
+                const matM = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const meshM = new THREE.Mesh(geoM, matM);
+                meshM.position.set(point.x, 2, point.z);
+                modelGroup.add(meshM);
+
+                let currentDepth = 0;
+                point.layers.forEach(layer => {
+                    const h = layer.thick * vScale;
+                    const geo = new THREE.CylinderGeometry(0.5, 0.5, h, 6);
+                    const mat = new THREE.MeshPhongMaterial({ color: getLayerColor(layer.type) });
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.set(point.x, -(currentDepth + h/2), point.z);
+                    modelGroup.add(mesh);
+                    currentDepth += h * vScale;
+                });
+            });
+
+            const maxLayerCount = Math.max(...renderPoints.map(p => p.layers.length), centerPointData.length);
+            const numPoints = renderPoints.length;
+
+            for (let i = 0; i < maxLayerCount; i++) {
+                for (let j = 0; j < numPoints; j++) {
+                    const p1 = renderPoints[j];
+                    const p2 = renderPoints[(j + 1) % numPoints];
+                    
+                    const l1 = p1.layers[i] || {thick:0, type:"none"};
+                    const l2 = p2.layers[i] || {thick:0, type:"none"};
+                    const lC = centerPointData[i] || {thick:0, type:"none"};
+
+                    if (l1.thick === 0 && l2.thick === 0 && lC.thick === 0) continue;
+
+                    const type = (l1.type !== "none") ? l1.type : ((l2.type !== "none") ? l2.type : lC.type);
+                    if (type === "none") continue;
+
+                    const color = getLayerColor(type);
+                    const material = new THREE.MeshPhongMaterial({
+                        color: color, side: THREE.DoubleSide, transparent: true, opacity: opacity, wireframe: showWireframe, flatShading: true
+                    });
+
+                    const getDepth = (layers, targetIdx) => {
+                        let d = 0;
+                        for(let k=0; k<targetIdx; k++) d += (layers[k]?.thick || 0);
+                        return d;
+                    };
+
+                    const d1_top = getDepth(p1.layers, i);
+                    const d2_top = getDepth(p2.layers, i);
+                    const dc_top = getDepth(centerPointData, i);
+                    
+                    const d1_btm = d1_top + l1.thick;
+                    const d2_btm = d2_top + l2.thick;
+                    const dc_btm = dc_top + lC.thick;
+
+                    const wallVerts = [
+                        p1.x, -d1_top * vScale, p1.z, p2.x, -d2_top * vScale, p2.z, p1.x, -d1_btm * vScale, p1.z, p2.x, -d2_btm * vScale, p2.z
+                    ];
+                    const wallGeo = new THREE.BufferGeometry();
+                    wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallVerts, 3));
+                    wallGeo.setIndex([0, 2, 1, 1, 2, 3]);
+                    wallGeo.computeVertexNormals();
+                    modelGroup.add(new THREE.Mesh(wallGeo, material));
+
+                    if (showVolume) {
+                        const ceilVerts = [ p1.x, -d1_top * vScale, p1.z, p2.x, -d2_top * vScale, p2.z, 0, -dc_top * vScale, 0 ];
+                        const ceilGeo = new THREE.BufferGeometry();
+                        ceilGeo.setAttribute('position', new THREE.Float32BufferAttribute(ceilVerts, 3));
+                        modelGroup.add(new THREE.Mesh(ceilGeo, material));
+
+                        const floorVerts = [ p1.x, -d1_btm * vScale, p1.z, p2.x, -d2_btm * vScale, p2.z, 0, -dc_btm * vScale, 0 ];
+                        const floorGeo = new THREE.BufferGeometry();
+                        floorGeo.setAttribute('position', new THREE.Float32BufferAttribute(floorVerts, 3));
+                        modelGroup.add(new THREE.Mesh(floorGeo, material));
+                    }
+                }
+            }
+        }
+
+        // --- UI & File Handling ---
+        function triggerInput(idx) {
+            currentDropIdx = idx;
+            document.getElementById('file-input').click();
+        }
+
+        function handleFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                images[currentDropIdx] = e.target.result.split(',')[1];
+                
+                const img = new Image();
+                img.onload = () => {
+                    imageElements[currentDropIdx] = img;
+                    const dropZone = document.getElementById(`drop-${currentDropIdx}`);
+                    dropZone.style.backgroundImage = `url(${e.target.result})`;
+                    dropZone.classList.add('has-image');
+                    dropZone.innerHTML = ''; 
+                    document.getElementById(`status-${currentDropIdx}`).innerHTML = '<span class="text-[10px] text-center text-indigo-500 font-bold">画像セット完了</span>';
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        const dropZones = document.querySelectorAll('.drop-zone');
+        dropZones.forEach((zone, idx) => {
+            zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('bg-indigo-50'); });
+            zone.addEventListener('dragleave', (e) => { e.preventDefault(); zone.classList.remove('bg-indigo-50'); });
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                zone.classList.remove('bg-indigo-50');
+                if (e.dataTransfer.files.length > 0) {
+                    currentDropIdx = idx; 
+                    const file = e.dataTransfer.files[0];
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        images[idx] = ev.target.result.split(',')[1];
+                        const img = new Image();
+                        img.onload = () => {
+                            imageElements[idx] = img;
+                            const dropZone = document.getElementById(`drop-${idx}`);
+                            dropZone.style.backgroundImage = `url(${ev.target.result})`;
+                            dropZone.classList.add('has-image');
+                            dropZone.innerHTML = ''; 
+                            document.getElementById(`status-${idx}`).innerHTML = '<span class="text-[10px] text-center text-indigo-500 font-bold">画像セット完了</span>';
+                        };
+                        img.src = ev.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        });
+
+        // --- HSV Conversion ---
+        function rgbToHsv(r, g, b) {
+            r /= 255, g /= 255, b /= 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, v = max;
+            const d = max - min;
+            s = max === 0 ? 0 : d / max;
+
+            if (max === min) {
+                h = 0; 
+            } else {
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    case b: h = (r - g) / d + 4; break;
+                }
+                h /= 6;
+            }
+            return [h * 360, s, v];
+        }
+
+        // --- Color Analysis Logic (Improved: Auto-detect straw position) ---
+        function analyzeImageLocally(imgElement) {
+            return new Promise((resolve) => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // 画像をリサイズして処理
+                const w = 200; 
+                const h = 500;
+                canvas.width = w;
+                canvas.height = h;
+                ctx.drawImage(imgElement, 0, 0, w, h);
+                
+                const imageData = ctx.getImageData(0, 0, w, h);
+                const data = imageData.data;
+
+                const result = {};
+                const keys = ["left", "center", "right"];
+                
+                // 各エリア（左・中・右）の探索範囲を定義
+                // 画像全体を3分割し、その中で最も「地層色」が多い縦ラインを探す
+                const searchRanges = [
+                    { start: 0, end: Math.floor(w * 0.33) },       // Left area
+                    { start: Math.floor(w * 0.33), end: Math.floor(w * 0.66) }, // Center area
+                    { start: Math.floor(w * 0.66), end: w }        // Right area
+                ];
+
+                searchRanges.forEach((range, idx) => {
+                    // 1. このエリア内で最も「有効な地層色」が多いX座標を探す
+                    let bestX = -1;
+                    let maxValidPixels = -1;
+
+                    // 少し間引いて探索 (step=2)
+                    for (let x = range.start; x < range.end; x += 2) {
+                        let validCount = 0;
+                        for (let y = 0; y < h; y += 5) { // 縦も間引く
+                            const i = (y * w + x) * 4;
+                            const type = detectColorHybrid(data[i], data[i+1], data[i+2]);
+                            if (type !== "SKIP") validCount++;
+                        }
+                        
+                        if (validCount > maxValidPixels) {
+                            maxValidPixels = validCount;
+                            bestX = x;
+                        }
+                    }
+
+                    // 有効なラインが見つからなかった場合のフォールバック（エリア中央）
+                    if (bestX === -1) bestX = Math.floor((range.start + range.end) / 2);
+
+                    // 2. 特定された bestX ライン上で詳細解析を行う
+                    const layers = [];
+                    let currentType = null;
+                    let currentThickness = 0;
+                    const scanRadius = 2; // 平均化半径
+
+                    for (let y = 0; y < h; y++) {
+                        let rSum = 0, gSum = 0, bSum = 0, count = 0;
+                        
+                        for (let dx = -scanRadius; dx <= scanRadius; dx++) {
+                            const x = bestX + dx;
+                            if (x < 0 || x >= w) continue;
+                            
+                            const i = (y * w + x) * 4;
+                            const r = data[i]; const g = data[i+1]; const b = data[i+2];
+                            
+                            rSum += r; gSum += g; bSum += b;
+                            count++;
+                        }
+                        
+                        const type = detectColorHybrid(rSum/count, gSum/count, bSum/count);
+
+                        if (type === "SKIP") continue;
+
+                        if (type === currentType) {
+                            currentThickness++;
+                        } else {
+                            // ノイズ除去: ある程度の厚さがないと層として認めない (2%程度)
+                            if (currentType !== null && currentThickness > h * 0.02) { 
+                                layers.push({ type: currentType, thick: currentThickness });
+                            }
+                            currentType = type;
+                            currentThickness = 1;
+                        }
+                    }
+                    // 最後の層
+                    if (currentType !== null && currentThickness > h * 0.02) {
+                        layers.push({ type: currentType, thick: currentThickness });
+                    }
+                    
+                    if (layers.length === 0) {
+                        layers.push({ type: "その他", thick: 100 });
+                    }
+
+                    result[keys[idx]] = layers;
+                });
+
+                resolve(result);
+            });
+        }
+
+        function detectColorHybrid(r, g, b) {
+            // HSV変換による明度・彩度チェック
+            let r_ = r / 255, g_ = g / 255, b_ = b / 255;
+            const max = Math.max(r_, g_, b_);
+            const min = Math.min(r_, g_, b_);
+            const d = max - min;
+            let s = max === 0 ? 0 : d / max;
+            let v = max;
+            
+            // HSVの色相計算 (0-360)
+            let h = 0;
+            if (max !== min) {
+                switch (max) {
+                    case r_: h = (g_ - b_) / d + (g_ < b_ ? 6 : 0); break;
+                    case g_: h = (b_ - r_) / d + 2; break;
+                    case b_: h = (r_ - g_) / d + 4; break;
+                }
+                h *= 60;
+            }
+
+            // --- 1. 無効色（ノイズ）の除外 ---
+            
+            // 白飛び・反射・シール (明度が高く彩度が低い)
+            if (v > 0.85 && s < 0.25) return "SKIP"; 
+            
+            // 暗すぎる影 (閾値を少し下げて暗い小豆色を拾えるようにしつつ、完全な黒は除外)
+            if (v < 0.15) return "SKIP"; 
+
+            // グレー・透明 (彩度が低い)
+            // 抹茶や小豆も彩度が低い場合があるため、閾値は慎重に
+            if (s < 0.10) return "SKIP"; 
+
+            // --- 2. 色相とRGBバランスによる判定 ---
+
+            // 緑色の判定強化:
+            // 45度(黄み) ～ 190度(青緑) を広く緑とみなす
+            if (h >= 45 && h <= 190) {
+                return "砂岩"; 
+            }
+            
+            // 茶色の判定 (赤～オレンジ、紫寄り)
+            if (h < 45 || h > 310) {
+                return "泥岩";
+            }
+
+            // その他の色相の場合はRGB距離比較で救済
+            const distGreen = Math.abs(h - 90); // 90度(純緑)からの距離
+            const distRed = Math.min(Math.abs(h - 0), Math.abs(h - 360)); // 赤からの距離
+
+            if (distGreen < distRed) return "砂岩";
+            return "泥岩";
+        }
+
+        async function processAllImages() {
+            const loader = document.getElementById('loading-overlay');
+            const btn = document.getElementById('process-btn');
+            const aiBtn = document.getElementById('ai-explain-btn'); // AIボタン取得
+            const centerBtn = document.getElementById('center-col-btn');
+            
+            if (!imageElements.some(img => img !== null)) {
+                alert("画像をアップロードしてください。");
                 return;
             }
 
-            content.innerHTML = "地層の重なりから環境の変遷を考察中...";
-
-            // Prepare simple text data of the layers
-            const northData = analyzeOneImage(IMAGES.n || new Image()).left.map(l => `${l.type === 'green' ? '砂岩' : '泥岩'}(${l.h.toFixed(1)})`).join(' → ');
-            
-            const prompt = `あなたは地学の先生です。以下の「ようかん地層モデル」の解析データ（下から上の順）に基づき、この地域の堆積環境の変化を中学生にも分かりやすく解説してください。
-            【解析データ】: ${northData}
-            【条件】: 砂岩（緑）は海岸に近い浅い海、泥岩（茶）は海岸から遠い深い海で積もります。
-            【出力】: 1.地層の構成、2.推測される環境の変化（海が深くなったか浅くなったか）、3.まとめ。マークダウン形式で。`;
+            loader.classList.remove('hidden');
+            btn.disabled = true;
+            aiBtn.classList.add('hidden'); 
+            centerBtn.classList.add('hidden');
 
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                const directionNames = ["北", "東", "南", "西"]; 
+                let successCount = 0;
+
+                for (let idx = 0; idx < 4; idx++) {
+                    const imgEl = imageElements[idx];
+                    if (!imgEl) continue;
+
+                    document.getElementById('loading-text').innerText = `${directionNames[idx]}側の画像を解析中...`;
+                    
+                    try {
+                        const res = await analyzeImageLocally(imgEl);
+                        
+                        if (res) {
+                            rawAnalysisResults[idx] = res;
+                            successCount++;
+                            updateLayerPreview(idx, res);
+                        } else {
+                            document.getElementById(`status-${idx}`).innerHTML = '<div class="text-[10px] text-red-500 font-bold leading-tight">解析失敗</div>';
+                        }
+                    } catch(e) {
+                        console.error(e);
+                        document.getElementById(`status-${idx}`).innerHTML = '<div class="text-[10px] text-red-500 font-bold leading-tight">エラー</div>';
+                    }
+                    
+                    await new Promise(r => setTimeout(r, 100));
+                }
+
+                if (successCount === 0) {
+                    alert("解析に失敗しました。画像を確認してください。");
+                } else {
+                    update3DModel();
+                    // 解析成功したらボタン表示
+                    aiBtn.classList.remove('hidden');
+                    centerBtn.classList.remove('hidden');
+                }
+
+            } catch (error) {
+                console.error(error);
+                alert("システムエラーが発生しました。");
+            } finally {
+                loader.classList.add('hidden');
+                btn.disabled = false;
+            }
+        }
+
+        // 層構成プレビュー生成
+        function updateLayerPreview(idx, res) {
+            const statusDiv = document.getElementById(`status-${idx}`);
+            if(!res) return; 
+
+            const keys = ["left", "center", "right"];
+            const labels = ["左", "中", "右"];
+            
+            let html = `<div class="flex justify-around gap-1 w-full bg-slate-50 p-1 rounded">`;
+            
+            keys.forEach((key, i) => {
+                const layers = res[key];
+                if (!layers) return;
+                
+                const totalThick = layers.reduce((sum, l) => sum + l.thick, 0);
+                
+                // 縦長の柱状図コンテナ
+                html += `<div class="flex flex-col items-center w-1/3">`;
+                // 柱部分
+                html += `<div class="w-4 h-16 bg-gray-200 rounded-sm flex flex-col overflow-hidden border border-slate-300">`; 
+                
+                layers.forEach(l => {
+                    const pct = (l.thick / totalThick) * 100;
+                    let colorHex = "#9ca3af";
+                    if (l.type !== "その他") {
+                        colorHex = '#' + getLayerColor(l.type).toString(16).padStart(6, '0');
+                    }
+                    html += `<div style="height:${pct}%; background-color:${colorHex};" title="${l.type}: ${Math.round(pct)}%"></div>`;
+                });
+                
+                html += `</div>`;
+                // ラベル
+                html += `<span class="text-[9px] text-slate-500 mt-1">${labels[i]}</span>`;
+                html += `</div>`;
+            });
+            
+            html += `</div>`;
+            statusDiv.innerHTML = html;
+        }
+
+        // --- Center Column Feature ---
+        function showCenterColumn() {
+            if (!centerPointData || centerPointData.length === 0) {
+                alert("中央地点のデータがまだありません。解析を実行してください。");
+                return;
+            }
+            
+            const modal = document.getElementById('col-modal');
+            const contentDiv = document.getElementById('col-content');
+            modal.classList.remove('hidden');
+            
+            const totalThick = centerPointData.reduce((sum, l) => sum + l.thick, 0);
+            
+            // 柱状図生成
+            let html = `<div class="w-24 h-64 bg-gray-200 border-2 border-slate-400 rounded-lg flex flex-col overflow-hidden shadow-inner my-4 relative">`;
+            
+            // 目盛り線追加 (25%, 50%, 75%)
+            html += `<div class="absolute w-full border-t border-white/30" style="top:25%"></div>`;
+            html += `<div class="absolute w-full border-t border-white/50" style="top:50%"></div>`;
+            html += `<div class="absolute w-full border-t border-white/30" style="top:75%"></div>`;
+            
+            centerPointData.forEach(l => {
+                const pct = (l.thick / totalThick) * 100;
+                const colorHex = '#' + getLayerColor(l.type).toString(16).padStart(6, '0');
+                
+                html += `
+                    <div style="height:${pct}%; background-color:${colorHex};" class="w-full flex items-center justify-center group relative cursor-help">
+                        <span class="text-[10px] text-white font-bold drop-shadow-md opacity-0 group-hover:opacity-100 transition-opacity">${Math.round(pct)}%</span>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+            
+            // 凡例/詳細
+            html += `<div class="w-full space-y-2">`;
+            centerPointData.forEach(l => {
+                const pct = Math.round((l.thick / totalThick) * 100);
+                const colorHex = '#' + getLayerColor(l.type).toString(16).padStart(6, '0');
+                html += `
+                    <div class="flex items-center justify-between text-sm">
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 rounded shadow-sm" style="background-color:${colorHex};"></div>
+                            <span class="font-bold text-slate-700">${l.type}</span>
+                        </div>
+                        <span class="text-slate-500">${pct}%</span>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+            
+            contentDiv.innerHTML = html;
+        }
+
+        // --- AI Explanation Features ---
+        
+        async function generateGeologicalExplanation() {
+            // APIキーの取得（入力欄 or 環境変数）
+            const inputKey = document.getElementById('api-key-input').value.trim();
+            const key = inputKey || envApiKey;
+
+            if (!key) {
+                alert("AI解説機能を利用するには、Gemini APIキーが必要です。\n設定パネルに入力してください。");
+                document.getElementById('api-key-input').focus();
+                return;
+            }
+
+            // 解析データの集計
+            if (!rawAnalysisResults.some(r => r !== null)) {
+                alert("先に画像を解析してください。");
+                return;
+            }
+
+            const summary = summarizeGeology();
+            if (!summary) return;
+
+            // モーダル表示 & ロード中
+            const modal = document.getElementById('ai-modal');
+            const contentDiv = document.getElementById('ai-content');
+            modal.classList.remove('hidden');
+            contentDiv.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-8">
+                    <div class="loader border-indigo-200 border-t-indigo-600 mb-4"></div>
+                    <p class="text-indigo-600 font-bold">Geminiが地層を考察中...</p>
+                    <p class="text-xs text-slate-400 mt-2">堆積環境の物語を生成しています</p>
+                </div>
+            `;
+
+            // プロンプト作成
+            const prompt = `
+                あなたは中学校の理科の先生です。
+                生徒が「ようかん」で作った地層モデルを画像解析し、以下のようなデータが得られました。
+                このデータをもとに、この地層がどのような環境（海や湖の深さ、変化など）で堆積したと考えられるか、中学生にもわかるように面白く解説してください。
+
+                【解析データ】
+                - 地層構成: ${summary.composition}
+                - 全体の傾向: ${summary.trend}
+                
+                【解説のポイント】
+                - 砂岩（緑）は、粒が大きく、比較的浅い海や河口付近で積もることが多い。
+                - 泥岩（茶）は、粒が細かく、深い海や流れの穏やかな場所で積もることが多い。
+                - 交互に重なっている場合は、環境が周期的に変化した可能性がある。
+                - 「昔、ここはこんな海だったのかもしれません…」という物語風の語り口で始めてください。
+                - 最後に、この地層モデルを作った生徒への励ましの言葉も添えてください。
+            `;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{ parts: [{ text: prompt }] }]
                     })
                 });
+
+                if (!response.ok) throw new Error("API Request Failed");
+
                 const data = await response.json();
                 const text = data.candidates[0].content.parts[0].text;
-                content.innerHTML = marked.parse(text);
-            } catch (err) {
-                content.innerHTML = "エラーが発生しました。APIキーを確認してください。";
+                
+                // Markdown -> HTML簡易変換 (marked.js使用)
+                contentDiv.innerHTML = marked.parse(text);
+
+            } catch (e) {
+                console.error(e);
+                contentDiv.innerHTML = `
+                    <div class="text-center py-8 text-red-500">
+                        <p class="font-bold mb-2">エラーが発生しました</p>
+                        <p class="text-sm">APIキーが正しいか確認してください。<br>(${e.message})</p>
+                    </div>
+                `;
             }
         }
 
-        function showCenterChart() {
-            const overlay = document.getElementById('ai-overlay');
-            const content = document.getElementById('ai-content');
-            const title = document.getElementById('ai-title');
-            title.innerText = "📊 中央推定柱状図";
-            overlay.style.display = 'flex';
+        function summarizeGeology() {
+            let sandCount = 0;
+            let mudCount = 0;
+            let layerSequence = [];
 
-            if (!IMAGES.n) { content.innerHTML = "データがありません。"; return; }
-
-            // Re-calculate center
-            const res = { n: analyzeOneImage(IMAGES.n), w: analyzeOneImage(IMAGES.w), s: analyzeOneImage(IMAGES.s), e: analyzeOneImage(IMAGES.e) };
-            const NW = mergeColumns(res.n.left, res.w.right);
-            const NE = mergeColumns(res.n.right, res.e.left);
-            const SW = mergeColumns(res.s.right, res.w.left);
-            const SE = mergeColumns(res.s.left, res.e.right);
-            const center = interpolate(interpolate(NW, NE), interpolate(SW, SE));
-
-            let html = `<div class='flex flex-col items-center'><div class='w-32 border-2 border-white/20 flex flex-col-reverse'>`;
-            center.forEach(l => {
-                const color = l.type === 'green' ? '#22c55e' : '#92400e';
-                html += `<div style="height: ${l.h * 30}px; background: ${color};" class="w-full flex items-center justify-center text-[10px] border-t border-black/20">${l.type==='green'?'砂':'泥'}</div>`;
+            // 全方位の中心データを使って集計
+            rawAnalysisResults.forEach(res => {
+                if (res && res.center) {
+                    res.center.forEach(l => {
+                        if (l.type === "砂岩") sandCount += l.thick;
+                        if (l.type === "泥岩") mudCount += l.thick;
+                        layerSequence.push(l.type);
+                    });
+                }
             });
-            html += `</div><p class='mt-4 text-sm'>中央地点の推定データ（全方位の角データより算出）</p></div>`;
-            content.innerHTML = html;
+
+            if (sandCount === 0 && mudCount === 0) return null;
+
+            const total = sandCount + mudCount;
+            const sandRatio = Math.round((sandCount / total) * 100);
+            const mudRatio = Math.round((mudCount / total) * 100);
+
+            // 簡易的な傾向分析
+            let trend = "ランダムな堆積";
+            // 上の方が新しいので、配列の最初の方（上）を見る
+            // 注: 解析ロジックでは y=0 (上) から順に push している
+            const topLayer = layerSequence[0]; 
+            const bottomLayer = layerSequence[layerSequence.length - 1];
+
+            if (sandRatio > 70) trend = "全体的に砂っぽい（浅い海が続いた？）";
+            else if (mudRatio > 70) trend = "全体的に泥っぽい（深い海が続いた？）";
+            else trend = "砂と泥が混ざり合っている（環境が変化した？）";
+
+            return {
+                composition: `砂岩(緑):約${sandRatio}%、泥岩(茶):約${mudRatio}%`,
+                trend: trend + ` (上層は${topLayer}、下層は${bottomLayer}の傾向)`
+            };
         }
 
-        function closeOverlay() {
-            document.getElementById('ai-overlay').style.display = 'none';
-            document.getElementById('ai-title').innerText = "✨ 地層のAI解析結果";
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
         }
 
-        window.onload = () => {
-            initThreeJS();
-            // Default cube for visual
-            const geo = new THREE.BoxGeometry(10, 5, 10);
-            const mat = new THREE.MeshPhongMaterial({ color: 0x4c1d95, transparent: true, opacity: 0.3, wireframe: true });
-            meshGroup.add(new THREE.Mesh(geo, mat));
-        };
+        document.getElementById('v-scale').addEventListener('input', update3DModel);
+        document.getElementById('opacity').addEventListener('input', update3DModel);
+        document.getElementById('show-volume').addEventListener('change', update3DModel);
+        document.getElementById('show-wireframe').addEventListener('change', update3DModel);
 
-        window.onresize = () => {
-            const container = document.getElementById('canvas-container');
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
-        };
+        initThree();
     </script>
 </body>
 </html>
+
+
+
