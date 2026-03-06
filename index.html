@@ -2,38 +2,30 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>地層3Dソリッドモデラー</title>
+    <title>真・地層3Dソリッドモデラー</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <style>
-        body { margin: 0; background-color: #0f172a; color: white; overflow: hidden; }
-        #canvas-container { width: 100%; height: 60vh; position: relative; }
-        .ui-panel { height: 40vh; overflow-y: auto; background: #1e293b; border-top: 2px solid #334155; }
-        .drop-zone { 
-            aspect-ratio: 4/3; border: 2px dashed #6366f1; cursor: pointer;
-            background-size: cover; background-position: center;
-        }
-    </style>
 </head>
-<body>
+<body class="bg-slate-900 text-white overflow-hidden">
 
-<div id="canvas-container">
+<div id="canvas-container" class="w-full h-[60vh] relative">
     <div class="absolute top-4 left-4 z-10">
-        <h1 class="text-xl font-bold text-indigo-400">地層3Dモデラー</h1>
-        <input id="v-scale" type="range" min="1" max="20" step="0.5" value="5" class="mt-2">
-        <span class="text-xs block">垂直倍率</span>
+        <h1 class="text-xl font-bold text-indigo-400">3D地層解析ソリッドエンジン</h1>
+        <div class="bg-black/50 p-3 rounded mt-2 text-[10px] text-white/70">
+            垂直倍率：1.0x (固定)
+        </div>
     </div>
-    <div class="absolute top-4 right-4 z-10">
-        <button onclick="analyzeAndBuild()" class="bg-indigo-600 px-6 py-2 rounded-full font-bold shadow-xl">🚀 3Dモデル生成</button>
-    </div>
+    <button onclick="analyzeAndBuild()" class="absolute top-4 right-4 z-10 bg-indigo-600 hover:bg-indigo-500 px-8 py-3 rounded-full font-bold shadow-2xl transition-all active:scale-95">
+        🚀 4方位相関解析を実行
+    </button>
 </div>
 
-<div class="ui-panel p-6">
+<div class="h-[40vh] p-6 bg-slate-800 border-t-2 border-slate-700 overflow-y-auto">
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl mx-auto">
-        <div onclick="triggerInput(0)" id="drop-0" class="drop-zone flex items-center justify-center text-xs">北</div>
-        <div onclick="triggerInput(1)" id="drop-1" class="drop-zone flex items-center justify-center text-xs">西</div>
-        <div onclick="triggerInput(2)" id="drop-2" class="drop-zone flex items-center justify-center text-xs">南</div>
-        <div onclick="triggerInput(3)" id="drop-3" class="drop-zone flex items-center justify-center text-xs">東</div>
+        <div onclick="triggerInput(0)" id="drop-0" class="aspect-video border-2 border-dashed border-indigo-500 rounded-lg flex items-center justify-center cursor-pointer hover:bg-indigo-500/10 transition-all text-xs">北面(N)</div>
+        <div onclick="triggerInput(1)" id="drop-1" class="aspect-video border-2 border-dashed border-indigo-500 rounded-lg flex items-center justify-center cursor-pointer hover:bg-indigo-500/10 transition-all text-xs">西面(W)</div>
+        <div onclick="triggerInput(2)" id="drop-2" class="aspect-video border-2 border-dashed border-indigo-500 rounded-lg flex items-center justify-center cursor-pointer hover:bg-indigo-500/10 transition-all text-xs">南面(S)</div>
+        <div onclick="triggerInput(3)" id="drop-3" class="aspect-video border-2 border-dashed border-indigo-500 rounded-lg flex items-center justify-center cursor-pointer hover:bg-indigo-500/10 transition-all text-xs">東面(E)</div>
     </div>
 </div>
 
@@ -44,6 +36,7 @@
     let imageStates = [null, null, null, null];
     let currentTargetIdx = 0;
 
+    // --- 3D Scene Setup ---
     function init() {
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight * 0.6), 0.1, 1000);
@@ -51,106 +44,154 @@
         renderer.setSize(window.innerWidth, window.innerHeight * 0.6);
         document.getElementById('canvas-container').appendChild(renderer.domElement);
 
-        const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(10, 10, 10);
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0x404040));
+        const light1 = new THREE.DirectionalLight(0xffffff, 1);
+        light1.position.set(10, 20, 10);
+        scene.add(light1);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
         modelGroup = new THREE.Group();
         scene.add(modelGroup);
         camera.position.set(15, 12, 15);
         camera.lookAt(0, 0, 0);
 
+        const grid = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+        grid.position.y = -5.1;
+        scene.add(grid);
+
         animate();
     }
 
     function animate() {
         requestAnimationFrame(animate);
-        if (modelGroup) modelGroup.rotation.y += 0.005;
+        if (modelGroup) modelGroup.rotation.y += 0.002;
         renderer.render(scene, camera);
     }
 
-    // --- ここがスイッチの連鎖 ---
     function triggerInput(idx) {
         currentTargetIdx = idx;
-        document.getElementById('file-input').click(); // OSのファイル選択を開く
+        document.getElementById('file-input').click();
     }
 
     document.getElementById('file-input').onchange = function(e) {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = function(event) {
-            imageStates[currentTargetIdx] = event.target.result;
+        reader.onload = (ev) => {
+            imageStates[currentTargetIdx] = ev.target.result;
             const drop = document.getElementById(`drop-${currentTargetIdx}`);
-            drop.style.backgroundImage = `url(${event.target.result})`;
-            drop.innerText = ""; // 文字を消す
+            drop.style.backgroundImage = `url(${ev.target.result})`;
+            drop.style.backgroundSize = 'cover';
+            drop.innerText = "";
         };
         reader.readAsDataURL(file);
     };
 
-    // --- 3D生成の核心部分 ---
+    // --- 3D解析・構築ロジック ---
     async function analyzeAndBuild() {
-        // 全ての画像を解析
-        const allData = [];
-        for (let i = 0; i < 4; i++) {
-            if (!imageStates[i]) {
-                alert("全ての画像を選択してください");
-                return;
-            }
-            allData.push(await analyzeImage(imageStates[i]));
+        if (imageStates.includes(null)) {
+            alert("解析には4方位すべての画像が必要です。");
+            return;
         }
 
-        // 古いモデルを消す
+        const analysisResults = [];
+        for (let i = 0; i < 4; i++) {
+            analysisResults.push(await processImagePixels(imageStates[i]));
+        }
+
         while(modelGroup.children.length > 0) modelGroup.remove(modelGroup.children[0]);
 
-        const vScale = parseFloat(document.getElementById('v-scale').value);
-        const boxSize = 10;
-        
-        // とりあえず「北(0)」の層構造をベースに「ようかん」を作る
-        let currentY = -(5 * vScale);
-        allData[0].forEach(layer => {
-            const h = (10 * layer.ratio) * vScale;
-            if (h <= 0) return;
+        const TOTAL_HEIGHT = 10;
+        const SIZE = 10;
+        const V_SCALE = 1.0; // 固定倍率
 
-            const geo = new THREE.BoxGeometry(boxSize, h, boxSize);
-            const mat = new THREE.MeshPhongMaterial({ 
-                color: layer.type === "sand" ? 0x22c55e : 0x92400e,
-                transparent: true,
-                opacity: 0.9
+        const layerCount = analysisResults[0].length;
+        let currentBaseHeights = [0, 0, 0, 0]; // NW, SW, SE, NE
+
+        for (let l = 0; l < layerCount; l++) {
+            // 各面の比率から厚みを計算 (V_SCALEを掛けても1なので結果は等倍)
+            const hN = (analysisResults[0][l]?.ratio || 0) * TOTAL_HEIGHT * V_SCALE;
+            const hW = (analysisResults[1][l]?.ratio || 0) * TOTAL_HEIGHT * V_SCALE;
+            const hS = (analysisResults[2][l]?.ratio || 0) * TOTAL_HEIGHT * V_SCALE;
+            const hE = (analysisResults[3][l]?.ratio || 0) * TOTAL_HEIGHT * V_SCALE;
+
+            // 四隅の厚みを相関解析
+            const thickNW = (hN + hW) / 2;
+            const thickSW = (hW + hS) / 2;
+            const thickSE = (hS + hE) / 2;
+            const thickNE = (hE + hN) / 2;
+
+            const geometry = createDeformedBox(SIZE, currentBaseHeights, [thickNW, thickSW, thickSE, thickNE]);
+            const material = new THREE.MeshPhongMaterial({
+                color: analysisResults[0][l].type === "sand" ? 0x22c55e : 0x92400e,
+                side: THREE.DoubleSide,
+                flatShading: true,
+                shininess: 10
             });
-            const mesh = new THREE.Mesh(geo, mat);
-            mesh.position.y = currentY + h/2;
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.y = -5; 
             modelGroup.add(mesh);
-            currentY += h;
-        });
+
+            currentBaseHeights = [
+                currentBaseHeights[0] + thickNW,
+                currentBaseHeights[1] + thickSW,
+                currentBaseHeights[2] + thickSE,
+                currentBaseHeights[3] + thickNE
+            ];
+        }
     }
 
-    function analyzeImage(url) {
+    function processImagePixels(url) {
         return new Promise(resolve => {
             const img = new Image();
             img.onload = () => {
                 const cvs = document.createElement('canvas');
                 const ctx = cvs.getContext('2d');
-                cvs.width = 50; cvs.height = 50;
-                ctx.drawImage(img, 0, 0, 50, 50);
-                const pix = ctx.getImageData(25, 0, 1, 50).data;
+                cvs.width = 1; cvs.height = 100;
+                ctx.drawImage(img, img.width/2, 0, 1, img.height, 0, 0, 1, 100);
+                const data = ctx.getImageData(0, 0, 1, 100).data;
                 let layers = [];
-                for(let i=0; i<50; i++) {
-                    const r = pix[i*4], g = pix[i*4+1], b = pix[i*4+2];
+                for(let i=0; i<100; i++) {
+                    const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
                     layers.push((g > r && g > b) ? "sand" : "mud");
                 }
-                resolve(compress(layers));
+                resolve(compressLayers(layers));
             };
             img.src = url;
         });
     }
 
-    function compress(arr) {
+    function compressLayers(arr) {
         let res = [], cur = arr[0], count = 0;
-        arr.forEach(v => { if(v === cur) count++; else { res.push({type:cur, ratio:count/50}); cur=v; count=1; }});
-        res.push({type:cur, ratio:count/50});
+        arr.forEach(v => { if(v === cur) count++; else { res.push({type:cur, ratio:count/100}); cur=v; count=1; }});
+        res.push({type:cur, ratio:count/100});
         return res;
+    }
+
+    // 頂点を方位データに基づいて変形させる関数
+    function createDeformedBox(size, baseH, thicks) {
+        const boxGeo = new THREE.BoxGeometry(size, 1, size, 1, 1, 1);
+        const pos = boxGeo.attributes.position;
+        
+        for(let i=0; i<pos.count; i++) {
+            const x = pos.getX(i);
+            const z = pos.getZ(i);
+            const y = pos.getY(i);
+            
+            let bH = 0, tH = 0;
+            // XZ平面の座標で四隅（NW, SW, SE, NE）を特定
+            if(x < 0 && z < 0) { bH = baseH[0]; tH = thicks[0]; } // NW
+            else if(x < 0 && z > 0) { bH = baseH[1]; tH = thicks[1]; } // SW
+            else if(x > 0 && z > 0) { bH = baseH[2]; tH = thicks[2]; } // SE
+            else { bH = baseH[3]; tH = thicks[3]; } // NE
+            
+            // BoxGeometryの元のYが正(0.5)なら上面、負(-0.5)なら底面として配置
+            if(y > 0) pos.setY(i, bH + tH);
+            else pos.setY(i, bH);
+        }
+        pos.needsUpdate = true;
+        boxGeo.computeVertexNormals();
+        return boxGeo;
     }
 
     window.onload = init;
